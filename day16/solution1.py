@@ -1,102 +1,81 @@
 import re
-from copy import deepcopy
+from collections import defaultdict, deque
+from functools import lru_cache
 
 
 # input_file = "example.txt"
-input_file = 'input.txt'
+input_file = "input.txt"
 
-valve_map = {}
-idx = 0
-with open(input_file) as f:
-    for line in f:
-        line = line.strip()
-        if line != '':
-            name = line[6:8]
-            valve_map[name] = idx
-            idx += 1
-idx_map = {v:k for k,v in valve_map.items()}
+valve_adj = defaultdict(list)
+flow_rates = {}
 
-adj = []
-flow = []
 
 with open(input_file) as f:
     for line in f:
         line = line.strip()
         if line != "":
-            idx = valve_map[line[6:8]]
-            f = re.search(r'(?<=rate\=)\d+', line).group(0)
-            flow.append(int(f))
-            next_idx = line.find('valves')
+            valve = line[6:8]
+            flow_rates[valve] = int(re.search(r"(?<=rate\=)\d+", line).group(0))
+
+            next_idx = line.find("valves")
             if next_idx == -1:
-                next_idx = line.find('valve') + 6
+                next_idx = line.find("valve") + 6
             else:
                 next_idx += 7
-            adj_v = []
-            for v in line[next_idx:].split(','):
-                adj_v.append(valve_map[v.strip()])
-            adj.append(adj_v)
+            for v in line[next_idx:].split(","):
+                valve_adj[valve].append(v.strip())
 
-cur_flow = 0
-best_flow = -1
-is_open = [0] * len(valve_map.keys())
-process = [None] * 32
-best_process = None
 
-def max_potential(t):
-    mf = [flow[idx] for idx, io in enumerate(is_open) if io == 0]
-    mf.sort(reverse=True)
-    m = 0
-    for idx, f in enumerate(mf):
-        m += f * (t - idx - 1)
-    return m
+@lru_cache
+def distance(v1, v2):
+    if v1 == v2:
+        return 0
 
-def move(idx, t, pidx):
-    global cur_flow
-    global best_flow
-    global process
-    global best_process
-    process[pidx] = idx 
-    if flow[idx] > 0 and is_open[idx] == 0:
-        t -= 1
-        is_open[idx] = 1
-        cur_flow += t * flow[idx]
-        process[pidx+1] = f'o {idx}'
-        if t > 1 and cur_flow + max_potential(t-1) > best_flow:
-            for nidx in adj[idx]:
-                move(nidx, t-1, pidx+2)
+    valves = list(valve_adj.keys())
+    visited = {}
+    for v in valves:
+        visited[v] = False
+
+    q = deque([(v1, 0)])
+    visited[v1] = True
+
+    while len(q) > 0:
+        cur_v, d = q.popleft()
+        visited[cur_v] = True
+        if cur_v == v2:
+            return d
         else:
-            if best_flow < cur_flow:
-                best_flow = cur_flow
-                best_process = deepcopy(process)
-        cur_flow -= t * flow[idx]
-        is_open[idx] = 0
-        t += 1
-    if t > 1 and cur_flow + max_potential(t-1) > best_flow:
-        for nidx in adj[idx]:
-            move(nidx, t-1, pidx+1)
-    else:
-        if best_flow < cur_flow:
-            best_flow = cur_flow
-            best_process = deepcopy(process)
+            for v in valve_adj[cur_v]:
+                if not visited[v]:
+                    q.append((v, d + 1))
 
 
-def print_process(p):
-    s = 0
-    c = 0
-    for i in range(1, len(p)):
-        print(f'-----Minute {i}')
-        s += c
-        print(f'Produce {c}, total is {s}')
-        if p[i] is None:
-            break
-        if isinstance(p[i], str):
-            idx = int(p[i][2:])
-            c += flow[idx]
-            print(f'Open {idx_map[idx]}')
-        else:
-            idx = p[i]
-            print(f'Move to {idx_map[idx]}')
+best_flow_rate = -1
+cur_flow_rate = 0
+valves = list(valve_adj.keys())
+visited = {}
+for v in valves:
+    visited[v] = False
 
-move(0, 30, 0)
-print(best_flow)
-# print_process(best_process)
+potential_valves = [k for k, v in flow_rates.items() if v > 0]
+
+
+def move(v, t):
+    global best_flow_rate
+    global cur_flow_rate
+    visited[v] = True
+    if best_flow_rate < cur_flow_rate:
+        best_flow_rate = cur_flow_rate
+    for u in valves:
+        if u in potential_valves:
+            d = distance(v, u)
+            if not visited[u] and d + 1 < t:
+                new_t = t - d - 1
+                cur_flow_rate += flow_rates[u] * new_t
+                move(u, new_t)
+                cur_flow_rate -= flow_rates[u] * new_t
+    visited[v] = False
+
+
+move("AA", 30)
+print(best_flow_rate)
