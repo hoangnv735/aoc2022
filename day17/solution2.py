@@ -1,8 +1,9 @@
 import os
+from collections import defaultdict
 from copy import deepcopy
 
 # input_file = "example.txt"
-input_file = 'input.txt'
+input_file = "input.txt"
 
 with open(input_file) as f:
     effect_string = f.read().strip()
@@ -15,8 +16,9 @@ sl = len(effect_string)
 def get_effect():
     global sidx
     effect = effect_string[sidx]
+    ei = sidx
     sidx = (sidx + 1) % sl
-    return -1 if effect == "<" else 1
+    return -1 if effect == "<" else 1, ei
 
 
 rocks = [
@@ -58,12 +60,17 @@ rl = len(rocks)
 def get_rock():
     global ridx
     rock = rocks[ridx]
+    ri = ridx
     ridx = (ridx + 1) % rl
-    return rock
+    return rock, ri
 
 
 max_height = 0
 pg = []
+hidden = 0
+pile = []
+rock_and_effect_to_row = defaultdict(list)
+
 
 def get_pos():
     global max_height
@@ -120,19 +127,62 @@ def print_pg(rock=None, pos=None):
         print("".join(visual_row))
 
 
+def to_int(row):
+    p = 6
+    v = 0
+    while p >= 0:
+        v += row[6 - p] << p
+        p -= 1
+    return v
+
+
+def add_row(pos):
+    global pile
+    global pg
+    x = pos[0]
+    if x < len(pile):
+        pile = pile[: x - 1]
+        for idx in range(x, len(pg)):
+            pile.append(to_int(pg[idx]))
+    else:
+        for idx in range(len(pile), len(pg)):
+            # print(pg[idx])
+            pile.append(to_int(pg[idx]))
+
+
+def check(l1, l2):
+    for e1, e2 in zip(l1, l2):
+        if e1 != e2:
+            return False
+    return True
+
+
+def find_pattern(ri, ei, x, turn):
+    cur_pattern = (ri, ei)
+    for row, t in rock_and_effect_to_row[cur_pattern]:
+        c = x - row
+        if row < x and row > c - 1:
+            if check(pile[row - c : row], pile[row:x]):
+                return c, turn - t
+    return None, None
+
+
 def compute(m):
     global pg
     global max_height
-    turn = 0
-    while turn < m:
-        rock = get_rock()
+    global hidden
+    turn = 1
+    found = False
+    while turn <= m:
+        ri = ridx
+        rock, _ = get_rock()
         pos = get_pos()
-        # print(pos[0] + rock["height"], pos[0], rock["height"])
         buffer(pos[0] + rock["height"])
+        effect = None
+        ei = sidx
         while True:
             # effect
-            effect = get_effect()
-            # print(effect)
+            effect, _ = get_effect()
             new_pos = (pos[0], pos[1] + effect)
             if valid(rock, new_pos):
                 pos = new_pos
@@ -146,14 +196,23 @@ def compute(m):
                     y = pos[1] + block[1]
                     pg[x][y] = 1
                 max_height = max(max_height, pos[0] + rock["height"])
-                # print_pg(rock, pos)
-                # print('max_height', max_height)
-                # input()
                 break
-            # print_pg(rock, pos)
-            # print('max_height', max_height)
-            # input()
+        if not found:
+            add_row(pos)
+            height, cycle = find_pattern(ri, ei, pos[0], turn)
+            if height is not None:
+                # print(cycle, height, turn)
+                found = True
+                hidden = height * ((m - turn) // cycle)
+                m = ((m - turn) % cycle) + turn
+            else:
+                rock_and_effect_to_row[(ri, ei)].append((pos[0], turn))
+
         turn += 1
     return max_height
 
-print(compute(2022))
+
+M = 1000000000000
+# M = 2022
+c = compute(M)
+print(hidden + c, hidden, c)
